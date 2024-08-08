@@ -16,182 +16,144 @@
 #include <algorithm> 
 #include <openssl/sha.h> 
 
+#include "serialize.h"
+
  using json = nlohmann::json;
 
-int64_t getCurrentTimestamp() {
-    // Получаем текущее время в секундах
-    time_t seconds;
+ // Функция обратного вызова для записи данных
+ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* userp) {
+     userp->append((char*)contents, size * nmemb);
+     return size * nmemb;
+ }
 
-    seconds = time(NULL);
 
-    return seconds;
-}
+ int64_t getCurrentTimestamp() {
+     // Получаем текущее время в секундах
+     time_t seconds;
 
-uint64_t generateNonce() {
-    // Создаем генератор случайных чисел
-    std::random_device rd; // Используем аппаратный генератор случайных чисел
-    std::mt19937_64 gen(rd()); // 64-битный генератор
-    std::uniform_int_distribution<uint64_t> dis; // Равномерное распределение
+     seconds = time(NULL);
 
-    return dis(gen); // Генерируем случайное 64-битное число
-}
+     return seconds;
+ }
 
-// Функция обратного вызова для записи данных
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* userp) {
-    userp->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
+ uint64_t generateNonce() {
+     // Создаем генератор случайных чисел
+     std::random_device rd; // Используем аппаратный генератор случайных чисел
+     std::mt19937_64 gen(rd()); // 64-битный генератор
+     std::uniform_int_distribution<uint64_t> dis; // Равномерное распределение
 
-int get_current_height() {
-    CURL* curl;
-    CURLcode res;
-    std::string readBuffer;
+     return dis(gen); // Генерируем случайное 64-битное число
+ }
 
-    curl = curl_easy_init();
-    if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, "https://blockchain.info/latestblock");
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
+ int get_current_height() {
+     CURL* curl;
+     CURLcode res;
+     std::string readBuffer;
 
-        if (res == CURLE_OK) {
-            auto j = nlohmann::json::parse(readBuffer);
-            return j["height"];
-        }
-    }
-    return 0; // В случае ошибки
-}
+     curl = curl_easy_init();
+     if (curl) {
+         curl_easy_setopt(curl, CURLOPT_URL, "https://blockchain.info/latestblock");
+         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+         res = curl_easy_perform(curl);
+         curl_easy_cleanup(curl);
 
-std::string get_my_ip() {
-    CURL* curl;
-    CURLcode res;
-    std::string readBuffer;
+         if (res == CURLE_OK) {
+             auto j = nlohmann::json::parse(readBuffer);
+             return j["height"];
+         }
+     }
+     return 0; // В случае ошибки
+ }
 
-    curl = curl_easy_init();
-    if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, "https://api.ipify.org?format=json");
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+ std::string get_my_ip() {
+     CURL* curl;
+     CURLcode res;
+     std::string readBuffer;
 
-        res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
+     curl = curl_easy_init();
+     if (curl) {
+         curl_easy_setopt(curl, CURLOPT_URL, "https://api.ipify.org?format=json");
+         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
 
-        if (res == CURLE_OK) {
-            auto j = nlohmann::json::parse(readBuffer);
-            return j["ip"];
-        }
-    }
-    return "0"; // В случае ошибки
-}
+         res = curl_easy_perform(curl);
+         curl_easy_cleanup(curl);
 
-int32_t get_version_protocol(const std::string& host, const std::string& port) {
-    // URL, который будет храниться в переменной
-    std::string url = "https://bitnodes.io/api/v1/nodes/" + host + "-" + port + "/";
+         if (res == CURLE_OK) {
+             auto j = nlohmann::json::parse(readBuffer);
+             return j["ip"];
+         }
+     }
+     return "0"; // В случае ошибки
+ }
 
-    // Инициализация libcurl
-    CURL* curl;
-    CURLcode res;
-    std::string readBuffer;
+ int32_t get_version_protocol(const std::string& host, const std::string& port) {
+     // URL, который будет храниться в переменной
+     std::string url = "https://bitnodes.io/api/v1/nodes/" + host + "-" + port + "/";
 
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
+     // Инициализация libcurl
+     CURL* curl;
+     CURLcode res;
+     std::string readBuffer;
 
-    if (curl) {
-        // Установка URL
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+     curl_global_init(CURL_GLOBAL_DEFAULT);
+     curl = curl_easy_init();
 
-        // Установка функции обратного вызова для обработки данных
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+     if (curl) {
+         // Установка URL
+         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 
-        // Установка буфера для записи данных
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+         // Установка функции обратного вызова для обработки данных
+         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
 
-        // Выполнение запроса
-        res = curl_easy_perform(curl);
+         // Установка буфера для записи данных
+         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
 
-        // Проверка на ошибки
-        if (res != CURLE_OK) {
-            std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
-        }
-        else {
-            // Парсинг JSON
-            json parsedJson = json::parse(readBuffer);
+         // Выполнение запроса
+         res = curl_easy_perform(curl);
 
-            // Проверка наличия ключа "data" и извлечение первого элемента
-            if (parsedJson.contains("data") && parsedJson["data"].is_array() && !parsedJson["data"].empty()) {
-                json firstElement = parsedJson["data"][0]; // Извлечение первого элемента
-                int32_t version = static_cast<int32_t>(std::stoi(firstElement.dump(4)));
-                return version;
-            }
-            else {
-                std::cout << "No data found or 'data' is not an array." << std::endl;
-            }
-        }
+         // Проверка на ошибки
+         if (res != CURLE_OK) {
+             std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
+         }
+         else {
+             // Парсинг JSON
+             json parsedJson = json::parse(readBuffer);
 
-        // Очистка
-        curl_easy_cleanup(curl);
-    }
+             // Проверка наличия ключа "data" и извлечение первого элемента
+             if (parsedJson.contains("data") && parsedJson["data"].is_array() && !parsedJson["data"].empty()) {
+                 json firstElement = parsedJson["data"][0]; // Извлечение первого элемента
+                 int32_t version = static_cast<int32_t>(std::stoi(firstElement.dump(4)));
+                 return version;
+             }
+             else {
+                 std::cout << "No data found or 'data' is not an array." << std::endl;
+             }
+         }
 
-    curl_global_cleanup();
-    return 0;
-}
+         // Очистка
+         curl_easy_cleanup(curl);
+     }
 
-// Функция для сериализации int32_t в буфер
-void serializeInt32(std::vector<uint8_t>& buffer, int32_t value) {
-    buffer.push_back(static_cast<uint8_t>(value & 0xFF));         // младший байт
-    buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));  // второй байт
-    buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xFF)); // третий байт
-    buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xFF)); // старший байт
-}
+     curl_global_cleanup();
+     return 0;
+ }
 
-// Функция для сериализации uint64_t в буфер
-void serializeInt64(std::vector<uint8_t>& buffer, uint64_t value) {
-    for (int i = 0; i < 8; ++i) {
-        buffer.push_back(static_cast<uint8_t>(value & 0xFF)); // Младший байт
-        value >>= 8; // Сдвигаем на 8 бит
-    }
-}
+ // Функция для вычисления контрольной суммы
+ uint32_t calculateChecksum(const std::vector<uint8_t>& data) {
+     unsigned char hash[SHA256_DIGEST_LENGTH];
 
-// Функция для сериализации IP-адреса (IPv4)
-void serializeIPAddress(std::vector<uint8_t>& buffer, const std::string& ip) {
-    int a, b, c, d;
-    sscanf_s(ip.c_str(), "%d.%d.%d.%d", &a, &b, &c, &d);
-    buffer.push_back(static_cast<uint8_t>(a));
-    buffer.push_back(static_cast<uint8_t>(b));
-    buffer.push_back(static_cast<uint8_t>(c));
-    buffer.push_back(static_cast<uint8_t>(d));
-}
+     // Первое хеширование
+     SHA256(data.data(), data.size(), hash);
 
-// Функция для сериализации порта
-void serializePort(std::vector<uint8_t>& buffer, uint16_t port) {
-    buffer.push_back(static_cast<uint8_t>((port >> 8) & 0xFF)); // Старший байт
-    buffer.push_back(static_cast<uint8_t>(port & 0xFF));        // Младший байт
-}
+     // Второе хеширование
+     SHA256(hash, SHA256_DIGEST_LENGTH, hash);
 
-// Функция для сериализации строки user_agent
-void serializeUserAgent(std::vector<uint8_t>& buffer, const std::string& userAgent) {
-    // Сериализуем длину строки как 8-битное целое число
-    buffer.push_back(static_cast<uint8_t>(userAgent.size()));
+     // Возвращаем первые 4 байта как контрольную сумму
+     return *(reinterpret_cast<uint32_t*>(hash));
+ }
 
-    // Сериализуем саму строку
-    buffer.insert(buffer.end(), userAgent.begin(), userAgent.end());
-}
-
-// Функция для сериализации bool
-void serializeBool(std::vector<uint8_t>& buffer, bool value) {
-    buffer.push_back(value ? 0x01 : 0x00);
-}
-
-// Функция для сериализации длины полезной нагрузки
-std::uint32_t serializePayloadLength(std::size_t payloadLength) {
-    if (payloadLength > 0xFFFFFFFF) { // Если длина больше 4 Гб
-        return 0xFFFFFFFF;
-    }
-    else {
-        return static_cast<std::uint32_t>(payloadLength);
-    }
-}
 
 void show_content(std::vector<uint8_t>& content, std::string type) {
     // Выводим содержимое буфера
@@ -201,21 +163,6 @@ void show_content(std::vector<uint8_t>& content, std::string type) {
     } std::cout << std::endl;
     std::cout << std::dec << std::endl; // Возвращаемся к десятичной системе
 }
-
-// Функция для вычисления контрольной суммы
-uint32_t calculateChecksum(const std::vector<uint8_t>& data) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-
-    // Первое хеширование
-    SHA256(data.data(), data.size(), hash);
-
-    // Второе хеширование
-    SHA256(hash, SHA256_DIGEST_LENGTH, hash);
-
-    // Возвращаем первые 4 байта как контрольную сумму
-    return *(reinterpret_cast<uint32_t*>(hash));
-}
-
 
 class BitcoinNode {
 public:
@@ -253,8 +200,6 @@ public:
 
     }
 
-
-
     void waitForVerack() {
         std::vector<uint8_t> buffer(24); // Размер буфера для сообщения
         boost::system::error_code error;
@@ -269,10 +214,23 @@ public:
 
         // Проверка, является ли сообщение verack
         if (len >= 24 && buffer[0] == 0xD9 && buffer[1] == 0xB4 && buffer[2] == 0xBE && buffer[3] == 0xF9) {
-            // Проверка команды
             std::string command(buffer.begin() + 4, buffer.begin() + 16);
             if (command == "verack") {
                 std::cout << "Received verack message." << std::endl;
+            }
+            else if (command == "reject") {
+                // Обработка сообщения reject
+                if (len >= 24) {
+                    uint8_t code = buffer[18]; // Код отклонения
+                    uint8_t message_length = buffer[19]; // Длина сообщения отклонения
+
+                    std::string reject_message(buffer.begin() + 20, buffer.begin() + 20 + message_length);
+                    std::cout << "Received reject message. Code: " << static_cast<int>(code)
+                        << ", Message: " << reject_message << std::endl;
+                }
+                else {
+                    std::cout << "Received incomplete reject message." << std::endl;
+                }
             }
         }
         else {
@@ -281,7 +239,7 @@ public:
             for (size_t i = 0; i < len; ++i) {
                 std::cout << std::hex << static_cast<int>(buffer[i]) << " ";
             }
-
+            std::cout << std::dec << std::endl; // Сброс формата вывода на десятичный
         }
     }
 
@@ -293,22 +251,6 @@ private:
 
 
     std::vector<uint8_t> createVersionMessage() {
-
-        // Определение структуры для хранения данных сообщения version
-        struct VersionMessage {
-            int32_t version;           // Версия протокола
-            uint64_t services;         // Сервисы
-            uint64_t timestamp;        // Временная метка
-            std::string addr_recv_ip;  // IP-адрес получателя
-            uint16_t addr_recv_port;   // Порт получателя
-            std::string addr_from_ip;  // IP-адрес отправителя
-            uint16_t addr_from_port;    // Порт отправителя
-            uint64_t nonce;            // Nonce
-            std::string user_agent;    // User agent
-            int32_t start_height;      // Начальная высота блока
-            bool relay;                // Флаг реле
-        };
-
         struct NetAddr {
             std::string ip; // IPv6 адрес (можно использовать IPv4 в виде IPv6)
             uint16_t port;               // Порт
@@ -316,22 +258,22 @@ private:
             NetAddr() : ip{}, port(0) {}
         };
 
-        int32_t version;             // Версия протокола
-        uint64_t services;           // Услуги
-        int64_t timestamp;           // Время в формате UNIX
-        NetAddr addr_recv;           // Адрес получателя
-        NetAddr addr_from;           // Адрес отправителя
-        uint64_t nonce;              // Случайное число
-        std::string user_agent;      // Агент пользователя
-        int32_t start_height;        // Высота блока
-        bool relay;                  // Указывает, должен ли удаленный узел анонсировать транзакции
+        int32_t version;             // Версия протокола 4 байта
+        uint64_t services;           // Услуги 8 байт
+        int64_t timestamp;           // Время в формате UNIX 8 байт
+        NetAddr addr_recv;           // Адрес получателя 26 байт
+        NetAddr addr_from;           // Адрес отправителя 26 байт
+        uint64_t nonce;              // Случайное число 8 байт
+        std::string user_agent;      // Агент пользователя x байт
+        int32_t start_height;        // Высота блока 4 байт
+        bool relay;                  // Указывает, должен ли удаленный узел анонсировать транзакции 1 байт
 
         std::string host = endpoint.address().to_string();
-        unsigned short port_ = endpoint.port();
-        std::string port = std::to_string(port_);
+        unsigned short u_port = endpoint.port();
+        std::string port = std::to_string(u_port);
 
         version = get_version_protocol(host, port);
-        services = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100;
+        services = 0xFFFFFFFFFFFFFFFF;
         timestamp = getCurrentTimestamp();
         addr_recv.ip = host;
         addr_recv.port = std::stoi(port);
@@ -347,74 +289,84 @@ private:
         serializeInt32(versionBuffer, version);
 
 
-        std::vector<uint8_t> servicesBuffer;
         // Сериализация services в 8 байт
-        serializeInt64(versionBuffer, services);
+        serializeuInt64(versionBuffer, services);
 
 
-        std::vector<uint8_t> timestampBuffer;
         // Сериализация timestamp в 8 байт
         serializeInt64(versionBuffer, timestamp);
+        show_content(versionBuffer, "timestamp");
 
 
-        std::vector<uint8_t> addr_recvBuffer;
         // Сериализация IP-адреса
-        serializeIPAddress(versionBuffer, addr_recv.ip);
+        // serializeIPAddress(versionBuffer, addr_recv.ip);
         // Сериализация порта
-        serializePort(versionBuffer, addr_recv.port);
+        // serializePort(versionBuffer, addr_recv.port);
+        // show_content(versionBuffer, "ip and port recv");
 
+        std::vector<uint8_t> net_addr_recv;
+        serializeAddress(net_addr_recv, addr_recv.ip, addr_recv.port);
 
-        std::vector<uint8_t> addr_fromBuffer;
+        versionBuffer.insert(versionBuffer.end(), net_addr_recv.begin(), net_addr_recv.end());
+
+        show_content(net_addr_recv, "ip and port recv");
+        show_content(versionBuffer, "ip and port recv");
+        show_content(net_addr_recv, "ip and port recv");
+
         // Сериализация IP-адреса
-        serializeIPAddress(versionBuffer, addr_from.ip);
+        // serializeIPAddress(versionBuffer, addr_from.ip);
         // Сериализация порта
-        serializePort(versionBuffer, addr_from.port);
+        // serializePort(versionBuffer, addr_from.port);
+
+        std::vector<uint8_t> net_addr_from;
+        serializeAddress(net_addr_from, addr_from.ip, addr_from.port);
+        
+        versionBuffer.insert(versionBuffer.end(), net_addr_from.begin(), net_addr_from.end());
+
+        show_content(net_addr_from, "ip and port from");
+        show_content(versionBuffer, "ip and port from");
+        show_content(net_addr_from, "ip and port from");
 
 
-        std::vector<uint8_t> nonceBuffer;
         // Сериализация nonce в 8 байт
-        serializeInt64(versionBuffer, nonce);
+        serializeuInt64(versionBuffer, nonce);
+        show_content(versionBuffer, "nonce");
 
 
-        std::vector<uint8_t> userBuffer;
         // Сериализация user_agent
         serializeUserAgent(versionBuffer, user_agent);
+        show_content(versionBuffer, "user agent");
         
 
-        std::vector<uint8_t> heightBuffer;
         // Сериализуем высоту
         serializeInt32(versionBuffer, start_height);
+        show_content(versionBuffer, "height");
         
 
-        std::vector<uint8_t> relayBuffer;
         // Сериализация bool
         serializeBool(versionBuffer, relay);
         
+        std::vector<uint8_t> versionMessage;
 
         // Формирование заголовка сообщения
-        std::string magic_number = "f9beb4d9";
-        std::string command = "version";
+        serializeMagicNumber(versionMessage);
 
-        const size_t command_size = 12;
-        const size_t header_size = magic_number.size() + command_size;
+        serializeCommand(versionMessage, "version");
 
-        uint32_t payload_length = static_cast<uint32_t>(versionBuffer.size());// Вычисление контрольной суммы
-        std::uint32_t length = serializePayloadLength(payload_length);
+        // Сериализация длины полезной нагрузки
+        uint32_t payloadLength = versionBuffer.size(); 
+        serializePayloadLength(versionMessage, payloadLength);
 
-        uint32_t checksum = calculateChecksum(versionBuffer);
 
-        std::vector<uint8_t> commandBytes(command_size, 0);
-        std::copy(command.begin(), command.end(), commandBytes.begin());
-        commandBytes.resize(command_size, 0);
+        // uint32_t checksum = calculateChecksum(versionBuffer);
 
-        std::vector<uint8_t> message(header_size + payload_length);
-        std::copy(magic_number.begin(), magic_number.end(), message.begin());
-        std::copy(commandBytes.begin(), commandBytes.end(), message.begin() + magic_number.size());
-        std::memcpy(message.data() + magic_number.size() + command_size, &length, sizeof(length));
-        std::memcpy(message.data() + magic_number.size() + command_size + sizeof(length), &checksum, sizeof(checksum)); // Добавляем контрольную сумму
-        std::copy(versionBuffer.begin(), versionBuffer.end(), message.begin() + header_size);
+        // Сериализация контрольной суммы
+        // serializeChecksum(versionMessage, checksum);
 
-        return message;
+        // Добавляем полезную нагрузку из versionBuffer
+        versionMessage.insert(versionMessage.end(), versionBuffer.begin(), versionBuffer.end());
+
+        return versionMessage;
     }
 };
 
@@ -529,7 +481,7 @@ int main() {
     };
     
     //std::string mini_str = getDataNode();
-    std::string host = "150.136.4.102"; //mini_str.substr(0, mini_str.length() - 5);
+    std::string host = "172.65.15.46"; //mini_str.substr(0, mini_str.length() - 5);
     std::string port = "8333"; //mini_str.substr(mini_str.length() - 4);
 
     Node_Address node_data = {host, port};
